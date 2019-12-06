@@ -14,7 +14,7 @@ namespace ObjectCloner.Tests.DeepClone
             ClassWithAPrivateField clone = ObjectCloner.DeepClone(original);
             
             Assert.NotSame(original.GetPrivateField(), clone.GetPrivateField());
-            Assert.Equal(original.GetPrivateField(), clone.GetPrivateField());
+            Assert.Null(clone.GetPrivateField());
         }
         
         [Fact]
@@ -24,7 +24,7 @@ namespace ObjectCloner.Tests.DeepClone
             ClassWithAReadonlyField clone = ObjectCloner.DeepClone(original);
             
             Assert.NotSame(original.GetPrivateField(), clone.GetPrivateField());
-            Assert.Equal(original.GetPrivateField(), clone.GetPrivateField());
+            Assert.Null(clone.GetPrivateField());
         }
         
 

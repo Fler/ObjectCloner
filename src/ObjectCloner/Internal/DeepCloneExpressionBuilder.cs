@@ -1,6 +1,8 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 
@@ -31,7 +33,7 @@ namespace ObjectCloner.Internal
             _cloneVariable = Expression.Variable(_typeOfT, "clone");
             _originalParameter = Expression.Parameter(_typeOfObject, "original");
             _originalVariable = Expression.Parameter(_typeOfT, "originalCasted");
-            
+
             
             Debug.Assert(itemClonerGetter != null);
             Debug.Assert(invokeMethod != null);
@@ -255,23 +257,39 @@ namespace ObjectCloner.Internal
         private IEnumerable<Expression> CreateFieldCopyExpressions()
         {
             IEnumerable<FieldInfo> fields = _typeOfT.GetAllFieldsDeep();
+            var isCheckableIgnore = !_typeOfT.IsArray
+                                     && !_typeOfT.IsValueType
+                                     && _typeOfT.GetInterfaces().All(x => x != typeof(IEnumerable));
             
             foreach (FieldInfo field in fields)
             {
+                if (isCheckableIgnore && field.IsIgnored())
+                {
+                    MethodInfo setValueMethod = typeof(FieldInfo).GetMethod("SetValue", new[] { field.FieldType, field.FieldType });
+                    Debug.Assert(setValueMethod != null);
+                    
+                    yield return Expression.Call(
+                        Expression.Constant(field),
+                        setValueMethod,
+                        Expression.Convert(_cloneVariable, _typeOfObject),
+                        Expression.Convert(Expression.Default(field.FieldType), _typeOfObject));
+
+                    continue;
+                }
+
                 // Skip fields that are deeply immutable
                 if (TypeHelper.CanSkipDeepClone(field.FieldType))
                 {
                     continue;
                 }
-
-
+                
                 MemberExpression cloneFieldExpression = Expression.Field(_cloneVariable, field);
 
                 if (!field.IsInitOnly)
                 {
                     // Read-write fields are easy to set. Generate code like:
                     // clone.field = DeepCloneInternal<TypeOfField>.DeepCloner(original.field, dict);
-                    
+
                     yield return Expression.Assign(
                         cloneFieldExpression,
                         Expression.Convert(
@@ -284,7 +302,7 @@ namespace ObjectCloner.Internal
                 {
                     // Readonly fields can be written using reflection. (Although it is an implementation detail: https://stackoverflow.com/questions/934930/can-i-change-a-private-readonly-field-in-c-sharp-using-reflection#comment743456_934944)
                     // Code: fieldInfoConstant.SetValue(clone.field, DeepCloneInternal<TypeOfField>.DeepCloner(original.field, dict));
-                    
+
                     MethodInfo setValueMethod = typeof(FieldInfo).GetMethod("SetValue", new[] { _typeOfObject, _typeOfObject });
                     Debug.Assert(setValueMethod != null);
 
@@ -294,8 +312,8 @@ namespace ObjectCloner.Internal
                         Expression.Convert(_cloneVariable, _typeOfObject),
                         CreateRecursiveCallExpression(Expression.Field(_originalVariable, field)));
                 }
-                
-                
+
+
             }
         }
     }
